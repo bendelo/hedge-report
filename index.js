@@ -1,8 +1,8 @@
 var request = require('request');
 var crypto = require('crypto');
-
-var apiKey = "";
-var apiSecret = "";
+var credentials = require('./credentials');
+var apiKey = credentials.apiKey;
+var apiSecret = credentials.apiSecret;
 
 function call(verb, path, data, callback) {
   var expires = new Date().getTime() + (60 * 1000); // 1 min in the future
@@ -52,15 +52,16 @@ function show(margin, position) {
   var unhedgedUSD = unhedgedXBT * position.markPrice;
 
   var realisedPnlXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
-  var realisedPnlUSD = realisedPnlXBT * position.markPrice;
+  var realisedPnlPcnt = realisedPnlXBT / Math.abs(hedgedXBT);
 
   console.log("Margin Balance: " + format(marginBalanceUSD) + " USD");
   console.log("Hedged:         " + format(hedgedUSD)        + " USD");
   console.log("Unhedged:       " + format(unhedgedUSD)      + " USD");
+  console.log("Return:         " + format(realisedPnlPcnt * 100)+ "%");
 }
 
 function format(number) {
-  return ("         " + Math.round(number).toLocaleString()).slice(-9);
+  return ("         " + (Math.round(number * 100) / 100).toLocaleString()).slice(-9);
 }
 
 // Start it off
