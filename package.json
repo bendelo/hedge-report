@@ -1,0 +1,19 @@
+{
+  "name": "hedge-report",
+  "version": "0.0.1-unreleased",
+  "description": "An example of using node-request for reporting.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:bendelo/hedge-report.git"
+  },
+  "private": true,
+  "author": "Ben Delo <ben@bitmex.com>",
+  "license": "MIT",
+  "dependencies": {
+    "request": "^2.75.0"
+  }
+}
