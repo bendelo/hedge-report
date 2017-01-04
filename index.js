@@ -45,23 +45,37 @@ function show(margin, position) {
   var marginBalanceXBT = margin.marginBalance / 1e8;
   var marginBalanceUSD = marginBalanceXBT * position.markPrice;
 
-  var hedgedXBT = position.homeNotional;
-  var hedgedUSD = position.foreignNotional;
+  var hedgedXBT = -position.homeNotional;
+  var hedgedUSD =  position.foreignNotional;
 
-  var unhedgedXBT = marginBalanceXBT + position.homeNotional;
+  var unhedgedXBT = marginBalanceXBT - hedgedXBT;
   var unhedgedUSD = unhedgedXBT * position.markPrice;
 
-  var realisedPnlXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
-  var realisedPnlPcnt = realisedPnlXBT / Math.abs(hedgedXBT);
+  var profitXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
 
-  console.log("Margin Balance: " + format(marginBalanceUSD) + " USD");
-  console.log("Hedged:         " + format(hedgedUSD)        + " USD");
-  console.log("Unhedged:       " + format(unhedgedUSD)      + " USD");
-  console.log("Return:         " + format(realisedPnlPcnt * 100)+ "%");
+  var hedgedPnlXBT = Math.max(0, Math.min(profitXBT - unhedgedXBT, profitXBT));
+  var hedgedPnlUSD = hedgedPnlXBT * position.avgEntryPrice;
+
+  var unhedgedPnlXBT = profitXBT - hedgedPnlXBT;
+  var unhedgedPnlUSD = unhedgedPnlXBT * position.markPrice;
+
+  var originalUSD  = hedgedUSD - hedgedPnlUSD;
+  var profitUSD  = hedgedPnlUSD + unhedgedPnlUSD;
+  var currentUSD   = originalUSD + profitUSD;
+  var interestPcnt = profitUSD / originalUSD;
+
+  console.log("Margin Balance: " + format(marginBalanceUSD)   + " USD");
+  console.log("Hedged:         " + format(hedgedUSD)          + " USD");
+  console.log("Unhedged:       " + format(unhedgedUSD)        + " USD");
+  console.log("");
+  console.log("Original Value: " + format(originalUSD)        + " USD");
+  console.log("Current  Value: " + format(currentUSD)         + " USD");
+  console.log("Profit:         " + format(profitUSD)          + " USD");
+  console.log("Profit Pcnt:    " + format(interestPcnt * 100) + " %");
 }
 
 function format(number) {
-  return ("         " + (Math.round(number * 100) / 100).toLocaleString()).slice(-9);
+  return ("         " + number.toFixed(2)).slice(-9);
 }
 
 // Start it off
