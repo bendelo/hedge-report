@@ -1,8 +1,10 @@
 var request = require('request');
 var crypto = require('crypto');
+var minimist = require('minimist');
 var credentials = require('./credentials');
 var apiKey = credentials.apiKey;
 var apiSecret = credentials.apiSecret;
+var autohedge = minimist(process.argv.slice(2), {boolean: 'autohedge'}).autohedge;
 
 function call(verb, path, data, callback) {
   var expires = new Date().getTime() + (60 * 1000); // 1 min in the future
@@ -24,9 +26,9 @@ function call(verb, path, data, callback) {
     'api-signature': signature
   };
 
-  request.get({
+  request({
       headers: headers,
-      url:'https://www.bitmex.com'+path,
+      url: 'https://www.bitmex.com' + path,
       method: verb,
       body: postBody
     },
@@ -72,6 +74,27 @@ function show(margin, position) {
   console.log("Current  Value: " + format(currentUSD)         + " USD");
   console.log("Profit:         " + format(profitUSD)          + " USD");
   console.log("Profit Pcnt:    " + format(interestPcnt * 100) + " %");
+  console.log("");
+
+  var side = unhedgedUSD > 0 ? "Sell" : "Buy";
+  var orderQty = Math.floor(Math.abs(unhedgedUSD));
+  console.log("Hedge order:    " + "  " + side + " "  + orderQty + " contracts");
+
+  if (!orderQty) {
+    console.log("No need to send hedge order.");
+  } else if (!autohedge) {
+    console.log("Use --autohedge to send hedge order.");
+  } else {
+    var order = {symbol: "XBTUSD", side: side, orderQty: orderQty, ordType: "Market", timeInForce: "ImmediateOrCancel"};
+    call('POST', '/api/v1/order', order,
+      function(result) {
+        var slippagePcnt = position.commission + (side == 'Buy' ? 1 : -1) * (result.avgPx / position.markPrice - 1);
+        console.log("Filled Quantity:" + format(result.cumQty)      + " USD");
+        console.log("Filled Price:   " + format(result.avgPx)       + " USD");
+        console.log("Slippage Pcnt:  " + format(slippagePcnt * 100) + " %");
+      }
+    );
+  }
 }
 
 function format(number) {
