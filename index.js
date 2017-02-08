@@ -4,7 +4,7 @@ var minimist = require('minimist');
 var credentials = require('./credentials');
 var apiKey = credentials.apiKey;
 var apiSecret = credentials.apiSecret;
-var args = minimist(process.argv.slice(2), {boolean: 'autohedge', boolean: 'reset1x'});
+var args = minimist(process.argv.slice(2), {boolean: 'autohedge', boolean: 'reset1x', float: 'coldwallet'});
 
 function call(verb, path, data, callback) {
   var expires = new Date().getTime() + (60 * 1000); // 1 min in the future
@@ -44,7 +44,7 @@ function call(verb, path, data, callback) {
 }
 
 function show(margin, position) {
-  var marginBalanceXBT = margin.marginBalance / 1e8;
+  var marginBalanceXBT = (margin.marginBalance / 1e8) + (args.coldwallet || 0);
   var marginBalanceUSD = marginBalanceXBT * position.markPrice;
 
   var hedgedXBT = -position.homeNotional;
