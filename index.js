@@ -4,7 +4,7 @@ var minimist = require('minimist');
 var credentials = require('./credentials');
 var apiKey = credentials.apiKey;
 var apiSecret = credentials.apiSecret;
-var autohedge = minimist(process.argv.slice(2), {boolean: 'autohedge'}).autohedge;
+var args = minimist(process.argv.slice(2), {boolean: 'autohedge', boolean: 'reset1x'});
 
 function call(verb, path, data, callback) {
   var expires = new Date().getTime() + (60 * 1000); // 1 min in the future
@@ -53,6 +53,9 @@ function show(margin, position) {
   var unhedgedXBT = marginBalanceXBT - hedgedXBT;
   var unhedgedUSD = unhedgedXBT * position.markPrice;
 
+  var availableMarginXBT = margin.availableMargin / 1e8;
+  var availableMarginUSD = availableMarginXBT * position.markPrice;
+
   var profitXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
 
   var hedgedPnlXBT = Math.max(0, Math.min(profitXBT - unhedgedXBT, profitXBT));
@@ -69,6 +72,7 @@ function show(margin, position) {
   console.log("Margin Balance: " + format(marginBalanceUSD)   + " USD");
   console.log("Hedged:         " + format(hedgedUSD)          + " USD");
   console.log("Unhedged:       " + format(unhedgedUSD)        + " USD");
+  console.log("Available Bal.: " + format(availableMarginUSD) + " USD");
   console.log("");
   console.log("Original Value: " + format(originalUSD)        + " USD");
   console.log("Current  Value: " + format(currentUSD)         + " USD");
@@ -76,22 +80,35 @@ function show(margin, position) {
   console.log("Profit Pcnt:    " + format(interestPcnt * 100) + " %");
   console.log("");
 
-  var side = unhedgedUSD > 0 ? "Sell" : "Buy";
+  var side = unhedgedUSD > 0 ? 'Sell' : 'Buy';
   var orderQty = Math.floor(Math.abs(unhedgedUSD));
   console.log("Hedge order:    " + "  " + side + " "  + orderQty + " contracts");
 
+  var maxQty = Math.floor(position.leverage * Math.max(0, availableMarginUSD / (1 + position.commission)));
+  if ((Math.sign(hedgedUSD) == Math.sign(unhedgedUSD)) && orderQty > maxQty) {
+    orderQty = Math.min(orderQty, maxQty);
+    console.log("Hedge order:    " + "  " + side + " "  + orderQty + " contracts (reduced due to insufficient Available Balance)");
+    if (!args.reset1x) {
+      console.log("Try using --reset1x to reset position leverage to 1x");
+    }
+  }
+
   if (!orderQty) {
     console.log("No need to send hedge order.");
-  } else if (!autohedge) {
+  } else if (!args.autohedge) {
     console.log("Use --autohedge to send hedge order.");
   } else {
-    var order = {symbol: "XBTUSD", side: side, orderQty: orderQty, ordType: "Market", timeInForce: "ImmediateOrCancel"};
+    var order = {symbol: 'XBTUSD', side: side, orderQty: orderQty, ordType: 'Market', timeInForce: 'ImmediateOrCancel'};
     call('POST', '/api/v1/order', order,
       function(result) {
-        var slippagePcnt = position.commission + (side == 'Buy' ? 1 : -1) * (result.avgPx / position.markPrice - 1);
-        console.log("Filled Quantity:" + format(result.cumQty)      + " USD");
-        console.log("Filled Price:   " + format(result.avgPx)       + " USD");
-        console.log("Slippage Pcnt:  " + format(slippagePcnt * 100) + " %");
+        if ('error' in result) {
+          console.log("Error sending order: " + result.error.message);
+        } else {
+          var slippagePcnt = position.commission + (side == 'Buy' ? 1 : -1) * (result.avgPx / position.markPrice - 1);
+          console.log("Filled Quantity:" + format(result.cumQty)      + " USD");
+          console.log("Filled Price:   " + format(result.avgPx)       + " USD");
+          console.log("Slippage Pcnt:  " + format(slippagePcnt * 100) + " %");
+        }
       }
     );
   }
@@ -101,15 +118,33 @@ function format(number) {
   return ("         " + number.toFixed(2)).slice(-9);
 }
 
-// Start it off
-call('GET', '/api/v1/user/margin', {filter: {currency: "XBt"}},
-  function(result) {
-    var margin = result;
-    call('GET', '/api/v1/position', {filter: {symbol: "XBTUSD"}},
+var handle = function(result) {
+  if ('error' in result) {
+    if (args.reset1x) {
+      console.log("Error setting 1x: " + result.error.message);
+    } else {
+      console.log("Error getting position: " + result.error.message);
+    }
+  } else {
+    var position = Array.isArray(result) ? result[0] : result;
+
+    call('GET', '/api/v1/user/margin', {filter: {currency: 'XBt'}},
       function(result) {
-        var position = result[0];
-        show(margin, position);
+        if ('error' in result) {
+          console.log("Error getting margin: " + result.error.message);
+        } else {
+          var margin = result;
+          show(margin, position);
+        }
       }
     );
   }
-);
+};
+
+// Start it off
+if (args.reset1x) {
+  call('POST', '/api/v1/position/leverage', {symbol: 'XBTUSD', leverage: 1}, handle);
+} else {
+  call('GET', '/api/v1/position', {filter: {symbol: 'XBTUSD'}}, handle);
+}
+
