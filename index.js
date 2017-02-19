@@ -84,7 +84,7 @@ function show(margin, position) {
   var orderQty = Math.floor(Math.abs(unhedgedUSD));
   console.log("Hedge order:    " + "  " + side + " "  + orderQty + " contracts");
 
-  var maxQty = Math.floor(position.leverage * Math.max(0, availableMarginUSD / (1 + position.commission)));
+  var maxQty = Math.floor(position.leverage * Math.max(0, availableMarginUSD / (1 + position.commission + position.commission)));
   if ((Math.sign(hedgedUSD) == Math.sign(unhedgedUSD)) && orderQty > maxQty) {
     orderQty = Math.min(orderQty, maxQty);
     console.log("Hedge order:    " + "  " + side + " "  + orderQty + " contracts (reduced due to insufficient Available Balance)");
