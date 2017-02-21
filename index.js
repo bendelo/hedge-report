@@ -4,7 +4,7 @@ var minimist = require('minimist');
 var credentials = require('./credentials');
 var apiKey = credentials.apiKey;
 var apiSecret = credentials.apiSecret;
-var args = minimist(process.argv.slice(2), {boolean: 'autohedge', boolean: 'reset1x', float: 'coldwallet'});
+var args = minimist(process.argv.slice(2), {float: 'coldwallet', boolean: 'reset1x', boolean: 'autohedge', boolean: 'force'});
 
 function call(verb, path, data, callback) {
   var expires = new Date().getTime() + (60 * 1000); // 1 min in the future
@@ -97,6 +97,8 @@ function show(margin, position) {
     console.log("No need to send hedge order.");
   } else if (!args.autohedge) {
     console.log("Use --autohedge to send hedge order.");
+  } else if (!args.force && orderQty > 1000) {
+    console.log("Use --force to send large hedge order.");
   } else {
     var order = {symbol: 'XBTUSD', side: side, orderQty: orderQty, ordType: 'Market', timeInForce: 'ImmediateOrCancel'};
     call('POST', '/api/v1/order', order,
