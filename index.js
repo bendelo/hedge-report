@@ -43,18 +43,18 @@ function call(verb, path, data, callback) {
   );
 }
 
-function show(margin, position) {
+function show(instrument, position, margin) {
   var marginBalanceXBT = (margin.marginBalance / 1e8) + (args.coldwallet || 0);
-  var marginBalanceUSD = marginBalanceXBT * position.markPrice;
+  var marginBalanceUSD = marginBalanceXBT * instrument.markPrice;
 
   var hedgedXBT = -position.homeNotional;
   var hedgedUSD =  position.foreignNotional;
 
   var unhedgedXBT = marginBalanceXBT - hedgedXBT;
-  var unhedgedUSD = unhedgedXBT * position.markPrice;
+  var unhedgedUSD = unhedgedXBT * instrument.markPrice;
 
   var availableMarginXBT = margin.availableMargin / 1e8;
-  var availableMarginUSD = availableMarginXBT * position.markPrice;
+  var availableMarginUSD = availableMarginXBT * instrument.markPrice;
 
   var profitXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
 
@@ -62,7 +62,7 @@ function show(margin, position) {
   var hedgedPnlUSD = hedgedPnlXBT * position.avgEntryPrice;
 
   var unhedgedPnlXBT = profitXBT - hedgedPnlXBT;
-  var unhedgedPnlUSD = unhedgedPnlXBT * position.markPrice;
+  var unhedgedPnlUSD = unhedgedPnlXBT * instrument.markPrice;
 
   var originalUSD  = hedgedUSD - hedgedPnlUSD;
   var profitUSD  = hedgedPnlUSD + unhedgedPnlUSD;
@@ -120,7 +120,20 @@ function format(number) {
   return ("         " + number.toFixed(2)).slice(-9);
 }
 
-var handle = function(result) {
+var handleInstrument = function(result) {
+  if ('error' in result) {
+    console.log("Error getting instrument: " + result.error.message);
+  } else {
+    var instrument = result[0];
+    if (args.reset1x) {
+      call('POST', '/api/v1/position/leverage', {symbol: 'XBTUSD', leverage: 1}, function(result) { handlePosition(instrument, result) });
+    } else {
+      call('GET', '/api/v1/position', {filter: {symbol: 'XBTUSD'}}, function(result) { handlePosition(instrument, result) });
+    }
+  }
+};
+
+var handlePosition = function(instrument, result) {
   if ('error' in result) {
     if (args.reset1x) {
       console.log("Error setting 1x: " + result.error.message);
@@ -129,24 +142,32 @@ var handle = function(result) {
     }
   } else {
     var position = Array.isArray(result) ? result[0] : result;
+    if (position == undefined) {
+      position = {
+        homeNotional: 0,
+        foreignNotional: 0,
+        rebalancedPnl: 0,
+        realisedPnl: 0,
+        avgEntryPrice: null,
+        commission: 0,
+        markPrice: null,
+      };
+    }
+    if (position.markPrice == null) {
+      position.markPrice = instrument.markPrice;
+    }
+    call('GET', '/api/v1/user/margin', {filter: {currency: 'XBt'}}, function(result) { handleMargin(instrument, position, result) });
+  }
+};
 
-    call('GET', '/api/v1/user/margin', {filter: {currency: 'XBt'}},
-      function(result) {
-        if ('error' in result) {
-          console.log("Error getting margin: " + result.error.message);
-        } else {
-          var margin = result;
-          show(margin, position);
-        }
-      }
-    );
+var handleMargin = function(instrument, position, result) {
+  if ('error' in result) {
+    console.log("Error getting margin: " + result.error.message);
+  } else {
+    var margin = result;
+    show(instrument, position, margin);
   }
 };
 
 // Start it off
-if (args.reset1x) {
-  call('POST', '/api/v1/position/leverage', {symbol: 'XBTUSD', leverage: 1}, handle);
-} else {
-  call('GET', '/api/v1/position', {filter: {symbol: 'XBTUSD'}}, handle);
-}
-
+call('GET', '/api/v1/instrument', {filter: {symbol: 'XBTUSD'}}, handleInstrument);
