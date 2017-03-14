@@ -16,7 +16,7 @@ function call(verb, path, data, callback) {
   var signature = crypto.createHmac('sha256', apiSecret).update(verb + path + expires + postBody).digest('hex');
 
   var headers = {
-    'content-type' : 'application/json',
+    'Content-Type': 'application/json',
     'Accept': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
     // This example uses the 'expires' scheme. You can also use the 'nonce' scheme. See
