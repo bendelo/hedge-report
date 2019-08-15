@@ -44,7 +44,7 @@ function call(verb, path, data, callback) {
 }
 
 function show(instrument, position, margin) {
-  var marginBalanceXBT = (margin.marginBalance / 1e8) + (args.coldwallet || 0);
+  var marginBalanceXBT = (margin.marginBalance / 1e8) + (position.pnl / 1e8) + (args.coldwallet || 0);
   var marginBalanceUSD = marginBalanceXBT * instrument.markPrice;
 
   var hedgedXBT = -position.homeNotional;
@@ -55,29 +55,14 @@ function show(instrument, position, margin) {
 
   var availableMarginXBT = margin.availableMargin / 1e8;
   var availableMarginUSD = availableMarginXBT * instrument.markPrice;
-
-  var profitXBT = (position.rebalancedPnl + position.realisedPnl) / 1e8;
-
-  var hedgedPnlXBT = Math.max(0, Math.min(profitXBT - unhedgedXBT, profitXBT));
-  var hedgedPnlUSD = hedgedPnlXBT * position.avgEntryPrice;
-
-  var unhedgedPnlXBT = profitXBT - hedgedPnlXBT;
-  var unhedgedPnlUSD = unhedgedPnlXBT * instrument.markPrice;
-
-  var originalUSD  = hedgedUSD - hedgedPnlUSD;
-  var profitUSD  = hedgedPnlUSD + unhedgedPnlUSD;
-  var currentUSD   = originalUSD + profitUSD;
-  var interestPcnt = profitUSD / originalUSD;
-
-  console.log("Margin Balance: " + format(marginBalanceUSD)   + " USD");
-  console.log("Hedged:         " + format(hedgedUSD)          + " USD");
-  console.log("Unhedged:       " + format(unhedgedUSD)        + " USD");
-  console.log("Available Bal.: " + format(availableMarginUSD) + " USD");
-  console.log("");
-  console.log("Original Value: " + format(originalUSD)        + " USD");
-  console.log("Current  Value: " + format(currentUSD)         + " USD");
-  console.log("Profit:         " + format(profitUSD)          + " USD");
-  console.log("Profit Pcnt:    " + format(interestPcnt * 100) + " %");
+  console.log (Date());
+  console.log("Margin BalanceXBT: " + format(marginBalanceXBT)   + " XBT");
+  console.log("Mark Price:        " + format(instrument.markPrice)   + " USD");
+  console.log("Position PNL:      " + format(position.pnl / 1e8)   + " XBT");
+  console.log("Margin Balance:    " + format(marginBalanceUSD)   + " USD");
+  console.log("Hedged:            " + format(hedgedUSD)          + " USD");
+  console.log("Unhedged:          " + format(unhedgedUSD)        + " USD");
+  console.log("Available Bal.:    " + format(availableMarginUSD) + " USD");
   console.log("");
 
   var side = unhedgedUSD > 0 ? 'Sell' : 'Buy';
@@ -106,7 +91,7 @@ function show(instrument, position, margin) {
         if ('error' in result) {
           console.log("Error sending order: " + result.error.message);
         } else {
-          var slippagePcnt = position.commission + (side == 'Buy' ? 1 : -1) * (result.avgPx / position.markPrice - 1);
+          var slippagePcnt = position.commission + (side == 'Buy' ? 1 : -1) * (result.avgPx / instrument.markPrice - 1);
           console.log("Filled Quantity:" + format(result.cumQty)      + " USD");
           console.log("Filled Price:   " + format(result.avgPx)       + " USD");
           console.log("Slippage Pcnt:  " + format(slippagePcnt * 100) + " %");
@@ -141,21 +126,24 @@ var handlePosition = function(instrument, result) {
       console.log("Error getting position: " + result.error.message);
     }
   } else {
-    var position = Array.isArray(result) ? result[0] : result;
-    if (position == undefined) {
-      position = {
-        homeNotional: 0,
-        foreignNotional: 0,
-        rebalancedPnl: 0,
-        realisedPnl: 0,
-        avgEntryPrice: null,
-        commission: 0,
-        markPrice: null,
-      };
+    var position = {
+      homeNotional: 0,
+      foreignNotional: 0,
+      commission: 0,
+      leverage: 1,
+      pnl: 0,
+    };
+
+    if(!Array.isArray(result)) { 
+      result = [ result ];
     }
-    if (position.markPrice == null) {
-      position.markPrice = instrument.markPrice;
-    }
+    
+    position.homeNotional    = result.reduce(function(x, p) { return x + p.homeNotional    }, 0);
+    position.foreignNotional = result.reduce(function(x, p) { return x + p.foreignNotional }, 0);
+    position.commission      = result.reduce(function(x, p) { return Math.max(x, p.commission) }, 0);
+    position.leverage        = result.reduce(function(x, p) { return Math.min(x, p.leverage) }, 100);
+    position.pnl             = result.reduce(function(x, p) { return x + v(instrument.multiplier, p.currentQty, instrument.markPrice) - p.markValue }, 0);
+
     call('GET', '/api/v1/user/margin', {filter: {currency: 'XBt'}}, function(result) { handleMargin(instrument, position, result) });
   }
 };
@@ -167,6 +155,10 @@ var handleMargin = function(instrument, position, result) {
     var margin = result;
     show(instrument, position, margin);
   }
+};
+
+var v = function(m, q, p) {
+  return m > 0 ? m * q * p : m * q / p;
 };
 
 // Start it off
